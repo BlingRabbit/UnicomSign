@@ -1,8 +1,10 @@
 // 娱乐中心
 const CryptoJS = require("crypto-js");
+var crypto = require('crypto');
 const { default: PQueue } = require('p-queue');
 const moment = require('moment');
-const path = require('path')
+const path = require('path');
+const { buildUnicomUserAgent } = require('../../../utils/util')
 
 var transParams = (data) => {
     let params = new URLSearchParams();
@@ -11,27 +13,29 @@ var transParams = (data) => {
     }
     return params;
 };
-// https://img.client.10010.com/gametask/index.html#/
-// 积分活动相关业务参数
-let account = {
-    "androidCodeId": "945188116",
-    "iosCodeId": "945188122",
-    "acId": "AC20200728150217",
-    "taskId": "96945964804e42299634340cd2650451",
-    "remark": "游戏视频任务积分",
-    "channel": "GGPD",
-    "channelName": "游戏视频任务积分",
-    "unWantedToast": false,
-    "unWantedToast2": true, "rewards": true,
-    "codeId": "945535736",
-    "action": "showVideoAd"
+
+var sign = (data) => {
+    let str = 'integralofficial&'
+    let params = []
+    data.forEach((v, i) => {
+        if (v) {
+            params.push('arguments' + (i + 1) + v)
+        }
+    });
+    return crypto.createHash('md5').update(str + params.join('&')).digest('hex')
 }
 
+var deviceInfos = [
+    'm=VKY-AL00&o=9&a=28&p=1080*1920&f=HUAWEI&mm=5725&cf=1800&cc=8&qqversion=null',
+    'm=SM-G977N&o=7&a=24&p=1080*1920&f=samsung&mm=5725&cf=1800&cc=8&qqversion=null',
+    'm=Pixel&o=8&a=27&p=1080*1920&f=google&mm=5725&cf=1800&cc=8&qqversion=null'
+]
+var deviceInfo = deviceInfos[Math.floor(Math.random() * deviceInfos.length)]
 
 var producGame = {
     // 娱乐中心每日签到-打卡
     gameSignin: (axios, options) => {
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let data = {
             'methodType': 'signin'
         }
@@ -63,19 +67,14 @@ var producGame = {
     },
 
     playGame: async (axios, options) => {
-        const { game, app, launchid } = options
+        const { game, launchid, jar } = options
 
-        let jwt = undefined
-        axios.defaults.headers.Cookie.split('; ').forEach(item => {
-            if (item.indexOf('jwt') === 0) {
-                jwt = item.split("=").pop()
-            }
-        })
-
+        let cookiesJson = jar.toJSON()
+        let jwt = cookiesJson.cookies.find(i => i.key == 'jwt')
         if (!jwt) {
-            console.log('jwt缺失')
-            return
+            throw new Error('jwt缺失')
         }
+        jwt = jwt.value
 
         let playGame = require(path.resolve(path.join(__dirname, './playGame.json')));
         let protobufRoot = require('protobufjs').Root;
@@ -118,7 +117,7 @@ var producGame = {
             let c = {
                 'Seq': Seq,
                 'qua': 'V1_AND_MINISDK_1.5.3_0_RELEASE_B',
-                'deviceInfo': 'm=VKY-AL00&o=9&a=28&p=1080*1920&f=HUAWEI&mm=5725&cf=1800&cc=8&qqversion=null',
+                'deviceInfo': deviceInfo,
                 'busiBuff': busiBuff,
                 'traceid': traceid,
                 'Module': `mini_app_growguard`,
@@ -142,6 +141,7 @@ var producGame = {
                 headers: {
                     "user-agent": "okhttp/4.4.0"
                 },
+                jar: null,
                 url: `https://q.qq.com/mini/OpenChannel?Action=input&Nonce=${Nonce}&PlatformID=2001&SignatureMethod=HmacSHA256&Timestamp=${Timestamp}&Signature=${hashInBase64}`,
                 method: 'post',
                 responseType: 'arrayBuffer',
@@ -151,20 +151,20 @@ var producGame = {
             console.log(Buffer.from(res.data).toString('hex'))
 
             // 这里不等待1分钟，上面使用 n*62 时长累计来替代，也可正常领取
-            await new Promise((resolve, reject) => setTimeout(resolve, 45 * 1000))
+            await new Promise((resolve, reject) => setTimeout(resolve, 35 * 1000))
 
             ++n
         } while (n <= 6)
     },
     gameInfo: async (axios, options) => {
-        const { game } = options
+        const { game, jar } = options
 
-        let jwt = undefined
-        axios.defaults.headers.Cookie.split('; ').forEach(item => {
-            if (item.indexOf('jwt') === 0) {
-                jwt = item.split("=").pop()
-            }
-        })
+        let cookiesJson = jar.toJSON()
+        let jwt = cookiesJson.cookies.find(i => i.key == 'jwt')
+        if (!jwt) {
+            throw new Error('jwt缺失')
+        }
+        jwt = jwt.value
 
         let playGame = require(path.resolve(path.join(__dirname, './playGame.json')));
         let protobufRoot = require('protobufjs').Root;
@@ -193,7 +193,7 @@ var producGame = {
         let c = {
             'Seq': Seq,
             'qua': 'V1_AND_MINISDK_1.5.3_0_RELEASE_B',
-            'deviceInfo': 'm=VKY-AL00&o=9&a=28&p=1080*1920&f=HUAWEI&mm=5725&cf=1800&cc=8&qqversion=null',
+            'deviceInfo': deviceInfo,
             'busiBuff': Buffer.from(JSON.stringify(busiBuff)),
             'traceid': traceid,
             'Module': `mini_app_info`,
@@ -217,6 +217,7 @@ var producGame = {
             headers: {
                 "user-agent": "okhttp/4.4.0"
             },
+            jar: null,
             url: `https://q.qq.com/mini/OpenChannel?Action=input&Nonce=${Nonce}&PlatformID=2001&SignatureMethod=HmacSHA256&Timestamp=${Timestamp}&Signature=${hashInBase64}`,
             method: 'post',
             responseType: 'arrayBuffer',
@@ -226,13 +227,13 @@ var producGame = {
         return result
     },
     popularGames: async (axios, options) => {
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let params = {
             'methodType': 'popularGames',
             'deviceType': 'Android',
             'clientVersion': '8.0100',
         }
-        let { data } = await axios.request({
+        let { data, config } = await axios.request({
             baseURL: 'https://m.client.10010.com/',
             headers: {
                 "user-agent": useragent,
@@ -244,19 +245,23 @@ var producGame = {
             data: transParams(params)
         })
         if (data) {
-            return data.popularList || []
+            return {
+                jar: config.jar,
+                popularList: data.popularList || []
+            }
         } else {
             console.log('记录失败')
         }
     },
     gameverify: async (axios, options) => {
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
-        let jwt = undefined
-        axios.defaults.headers.Cookie.split('; ').forEach(item => {
-            if (item.indexOf('jwt') === 0) {
-                jwt = item.split("=").pop()
-            }
-        })
+        const { jar } = options
+        let cookiesJson = jar.toJSON()
+        let jwt = cookiesJson.cookies.find(i => i.key == 'jwt')
+        if (!jwt) {
+            throw new Error('jwt缺失')
+        }
+        jwt = jwt.value
+
         let { data } = await axios.request({
             baseURL: 'https://m.client.10010.com/',
             headers: {
@@ -284,7 +289,7 @@ var producGame = {
     },
     gamerecord: async (axios, options) => {
         const { gameId } = options
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let params = {
             'methodType': 'record',
             'deviceType': 'Android',
@@ -308,14 +313,40 @@ var producGame = {
             console.log('记录失败')
         }
     },
+    queryIntegral: async (axios, options) => {
+        const useragent = buildUnicomUserAgent(options, 'p')
+        let params = {
+            'methodType': 'queryIntegral',
+            'taskCenterId': options.taskCenterId,
+            'videoIntegral': '0',
+            'isVideo': 'Y',
+            'clientVersion': '8.0100',
+            'deviceType': 'Android'
+        }
+        let { data, config } = await axios.request({
+            headers: {
+                "user-agent": useragent,
+                "referer": "https://img.client.10010.com",
+                "origin": "https://img.client.10010.com"
+            },
+            url: `https://m.client.10010.com/producGameTaskCenter`,
+            method: 'post',
+            data: transParams(params)
+        })
+        if (data.code === '0000') {
+            console.log('获取积分任务状态成功')
+        } else {
+            console.log('获取积分任务状态失败')
+        }
+    },
     getTaskList: async (axios, options) => {
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let params = {
             'methodType': 'queryTaskCenter',
             'deviceType': 'Android',
             'clientVersion': '8.0100',
         }
-        let { data } = await axios.request({
+        let { data, config } = await axios.request({
             headers: {
                 "user-agent": useragent,
                 "referer": "https://img.client.10010.com",
@@ -327,34 +358,35 @@ var producGame = {
         })
         if (data.code === '0000') {
             // reachState 0未完成, 1未领取, 2已完成
-            return data.data
+            return {
+                jar: config.jar,
+                games: data.data
+            }
         } else {
             console.log('获取游戏任务失败')
-            return []
+            return {}
         }
     },
     doGameFlowTask: async (axios, options) => {
-        let allgames = await producGame.popularGames(axios, options)
+        let { popularList: allgames, jar } = await producGame.popularGames(axios, options)
         let games = await producGame.timeTaskQuery(axios, options)
         games = allgames.filter(g => games.filter(g => g.state === '0').map(i => i.gameId).indexOf(g.id) !== -1)
         console.log('剩余未完成game', games.length)
-        let queue = new PQueue({ concurrency: 3 });
+        let queue = new PQueue({ concurrency: 2 });
 
+        console.log('调度任务中', '并发数', 2)
         for (let game of games) {
             queue.add(async () => {
                 console.log(game.name)
-                let { appInfo } = await producGame.gameInfo(axios, {
-                    ...options,
-                    game
-                })
                 await producGame.gameverify(axios, {
                     ...options,
+                    jar,
                     game
                 })
                 await producGame.playGame(axios, {
                     ...options,
-                    game,
-                    app: appInfo
+                    jar,
+                    game
                 })
             })
         }
@@ -366,27 +398,27 @@ var producGame = {
         games = games.filter(g => g.state === '1')
         console.log('剩余未领取game', games.length)
         for (let game of games) {
+            console.log(game.name)
             await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 10) + 15) * 1000))
             await producGame.gameFlowGet(axios, {
                 ...options,
-                gameId: game.id
+                gameId: game.gameId
             })
         }
     },
     doGameIntegralTask: async (axios, options) => {
-        let games = await producGame.getTaskList(axios, options)
+        let { games, jar } = await producGame.getTaskList(axios, options)
         games = games.filter(d => d.task === '5' && d.reachState === '0' && d.task_type === 'duration')
         console.log('剩余未完成game', games.length)
         let queue = new PQueue({ concurrency: 2 });
+
+        console.log('调度任务中', '并发数', 2)
         for (let game of games) {
             queue.add(async () => {
                 console.log(game.name)
-                let { appInfo } = await producGame.gameInfo(axios, {
-                    ...options,
-                    game
-                })
                 await producGame.gameverify(axios, {
                     ...options,
+                    jar,
                     game
                 })
                 await producGame.gamerecord(axios, {
@@ -395,38 +427,42 @@ var producGame = {
                 })
                 await producGame.playGame(axios, {
                     ...options,
+                    jar,
                     game: {
                         ...game,
                         gameCode: game.resource_id
-                    },
-                    app: appInfo
+                    }
                 })
-
             })
         }
 
         await queue.onIdle()
 
         await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 10) + 30) * 1000))
-        games = await producGame.getTaskList(axios, options)
-        games = games.filter(d => d.task === '5' && d.reachState === '1' && d.task_type === 'duration')
+        let { games: cgames } = await producGame.getTaskList(axios, options)
+        games = cgames.filter(d => d.task === '5' && d.reachState === '1' && d.task_type === 'duration')
         console.log('剩余未领取game', games.length)
         for (let game of games) {
-            await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 10) + 15) * 1000))
+            await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 10) + 20) * 1000))
             await producGame.gameIntegralGet(axios, {
                 ...options,
                 taskCenterId: game.id
             })
         }
 
-        await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 10) + 15) * 1000))
-        await producGame.gameIntegralGet(axios, {
-            ...options,
-            taskCenterId: 148
-        })
+        await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 5) + 5) * 1000))
+        let { games: ngames } = await producGame.getTaskList(axios, options)
+        let task_times = ngames.find(d => d.task === '3' && d.task_type === 'times')
+        if (task_times && task_times.reachState === '1') {
+            await new Promise((resolve, reject) => setTimeout(resolve, (Math.floor(Math.random() * 10) + 15) * 1000))
+            await producGame.gameIntegralGet(axios, {
+                ...options,
+                taskCenterId: task_times.id
+            })
+        }
     },
     timeTaskQuery: async (axios, options) => {
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let params = {
             'methodType': 'timeTaskQuery',
             'deviceType': 'Android',
@@ -452,7 +488,7 @@ var producGame = {
     },
     gameFlowGet: async (axios, options) => {
         const { gameId } = options
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let params = {
             'userNumber': options.user,
             'methodType': 'flowGet',
@@ -465,7 +501,8 @@ var producGame = {
             headers: {
                 "user-agent": useragent,
                 "referer": "https://img.client.10010.com",
-                "origin": "https://img.client.10010.com"
+                "origin": "https://img.client.10010.com",
+                "X-Requested-With": "com.sinovatech.unicom.ui"
             },
             url: `/producGameApp`,
             method: 'post',
@@ -482,7 +519,7 @@ var producGame = {
     },
     gameIntegralGet: async (axios, options) => {
         const { taskCenterId } = options
-        const useragent = `Mozilla/5.0 (Linux; Android 7.1.2; SM-G977N Build/LMY48Z; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/75.0.3770.143 Mobile Safari/537.36; unicom{version:android@8.0100,desmobile:${options.user}};devicetype{deviceBrand:samsung,deviceModel:SM-G977N};{yw_code:}    `
+        const useragent = buildUnicomUserAgent(options, 'p')
         let params = {
             'methodType': 'taskGetReward',
             'taskCenterId': taskCenterId,
@@ -506,6 +543,91 @@ var producGame = {
             }
         } else {
             console.log('获取奖励失败')
+        }
+    },
+    gameBox: async (axios, options) => {
+        await producGame.gameIntegralGet(axios, {
+            ...options,
+            taskCenterId: 98
+        })
+    },
+    watch3TimesVideoQuery: async (request, options) => {
+        let params = {
+            'arguments1': 'AC20200728150217', // acid
+            'arguments2': 'GGPD', // yhChannel
+            'arguments3': '96945964804e42299634340cd2650451', // yhTaskId menuId
+            'arguments4': new Date().getTime(), // time
+            'arguments6': '',
+            'netWay': 'Wifi',
+            'version': `android@8.0100`,
+        }
+        params['sign'] = sign([params.arguments1, params.arguments2, params.arguments3, params.arguments4])
+        return await require('./taskcallback').query(request, {
+            ...options,
+            params
+        })
+    },
+    watch3TimesVideo: async (axios, options) => {
+        const { jar } = options
+        let params = {
+            'arguments1': 'AC20200728150217',
+            'arguments2': 'GGPD',
+            'arguments3': '96945964804e42299634340cd2650451',
+            'arguments4': new Date().getTime(),
+            'arguments6': '',
+            'arguments7': '',
+            'arguments8': '',
+            'arguments9': '',
+            'netWay': 'Wifi',
+            'remark1': '游戏频道看视频得积分',
+            'remark': '游戏视频任务积分',
+            'version': `android@8.0100`,
+            'codeId': 945535736
+        }
+        params['sign'] = sign([params.arguments1, params.arguments2, params.arguments3, params.arguments4])
+        await require('./taskcallback').doTask(axios, {
+            ...options,
+            params,
+            jar
+        })
+    },
+    doTodayDailyTask: async (axios, options) => {
+
+        let { games: v_games } = await producGame.getTaskList(axios, options)
+        let video_task = v_games.find(d => d.task_type === 'video')
+
+        if (video_task.reachState === '0') {
+            let n = parseInt(video_task.task) - parseInt(video_task.progress)
+            console.log('领取视频任务奖励,剩余', n, '次')
+            let { jar } = await producGame.watch3TimesVideoQuery(axios, options)
+            let i = 1
+            do {
+                await producGame.watch3TimesVideo(axios, {
+                    ...options,
+                    jar
+                })
+                ++i
+            } while (i <= n)
+
+            await producGame.queryIntegral(axios, {
+                ...options,
+                taskCenterId: video_task.id
+            })
+
+        }
+
+        let { games } = await producGame.getTaskList(axios, options)
+        let today_task = games.find(d => d.task_type === 'todayTask')
+        if (today_task.reachState === '0') {
+            throw new Error('部分日常任务未完成，下次再尝试领取完成今日任务流量')
+        } else if (today_task.reachState === '1') {
+            await producGame.gameIntegralGet(axios, {
+                ...options,
+                taskCenterId: today_task.id
+            })
+            console.log('领取完成今日任务流量+200')
+        } else if (today_task.reachState === '2') {
+            console.log('每日日常任务已完成')
         }
     }
 }

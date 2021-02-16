@@ -1,12 +1,13 @@
 const yargs = require('yargs/yargs')
-const { hideBin } = require('yargs/helpers')
+// const { hideBin } = require('yargs/helpers')
 /**
  * 命令执行入口
  */
-var AutoSignMachine_Run = () => {
-  yargs(hideBin(process.argv))
+var AutoSignMachine_Run = (argv) => {
+  yargs((argv || process.argv).slice(2))
     .commandDir('commands')
     .demand(1)
+    .config('config', 'JSON配置文件路径')
     .help()
     .alias('h', 'help')
     .locale('en')
